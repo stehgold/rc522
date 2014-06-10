@@ -52,7 +52,7 @@ unsigned char serNum7[];
 void Clock_Init(void);
 void SPI_Init(void);
 void UART_Init(void);
-void digitalWrite(int, int);
+// void digitalWrite(int, int);
 unsigned char SPI_transfer(unsigned char);
 unsigned char sendAfterWaiting(unsigned char);
 void Serial_print(unsigned char[]);
@@ -109,9 +109,9 @@ void SPI_Init(){
 
 	SSI0_CR1_R &= ~SSI_CR1_SSE;											// disable SSI0
 	SSI0_CR1_R &= ~SSI_CR1_MS;											// master mode
-	SSI0_CPSR_R = (SSI0_CPSR_R&~SSI_CPSR_CPSDVSR_M)+2;					// clock prescaler for 1.5MHz SSIClk
+	SSI0_CPSR_R = (SSI0_CPSR_R&~SSI_CPSR_CPSDVSR_M)+8;					// clock prescaler for 4 MHz SSIClk
 	SSI0_CR0_R &= ~(SSI_CR0_SCR_M | SSI_CR0_SPH | SSI_CR0_SPO);
-	// SSI0_CR0_R |= SSI_CR0_SPH;											// set SPH for a try
+	// SSI0_CR0_R |= SSI_CR0_SPO;											// set SPO for a try -> tried all 4 combinations, doesn't work SPI sucks !
 	SSI0_CR0_R = (SSI0_CR0_R&~SSI_CR0_FRF_M)+SSI_CR0_FRF_MOTO;			// Freescale mode
 	SSI0_CR0_R = (SSI0_CR0_R&~SSI_CR0_DSS_M)+SSI_CR0_DSS_8;				// 8-bit data
 	SSI0_CR1_R |= SSI_CR1_SSE;											// enable SSI
@@ -152,13 +152,13 @@ void delay(unsigned int milis){											// delay milis ms
 }
 
 
-void digitalWrite(int pin, int state){
+/*void digitalWrite(int pin, int state){
 		if(state == HIGH){
 		GPIO_PORTA_DATA_R |= pin;
 	} else{
 		GPIO_PORTA_DATA_R &= ~pin;
 	}
-}
+} */
 
 unsigned char SPI_transfer(unsigned char data){
 	unsigned short rec_data;
@@ -199,12 +199,27 @@ void Serial_println(unsigned char text[]){
 }
 
 void Serial_print_hex(unsigned char hexnum){
-	UART_OutChar((hexnum / 16) + 0x20);
-	UART_OutChar((hexnum % 16) + 0x20);
+	unsigned char outchar;
+
+	outchar = hexnum / 16;
+	if (outchar > 9){
+		outchar += 0x30;
+	} else{
+		outchar += 0x40;
+	}
+	UART_OutChar(outchar);
+	outchar = hexnum % 16;
+	if (outchar > 9){
+		outchar += 0x30;
+	} else{
+		outchar += 0x40;
+	}
+	UART_OutChar(outchar);
 }
 
 void Serial_println_hex(unsigned char hexnum){
 	Serial_print_hex(hexnum);
+	UART_OutChar('\r');
 	UART_OutChar('\n');
 }
 
@@ -226,9 +241,9 @@ int main(void){
 
 	while(1){
 	// pinMode(chipSelectPin,OUTPUT);         // Set digital pin 10 as OUTPUT to connect it to the RFID /ENABLE pin
-	digitalWrite(chipSelectPin, LOW);      								// Activate the RFID reader
+	GPIO_PORTA_DATA_R &= ~chipSelectPin;      								// Activate the RFID reader
 	// pinMode(NRSTPD,OUTPUT);                // Set digital pin 10 , Not Reset and Power-down
-	digitalWrite(NRSTPD, HIGH);
+	GPIO_PORTA_DATA_R |= NRSTPD;
 
 	MFRC522_Init();
 
@@ -397,13 +412,13 @@ bool selectCard(bool dumpInfo){
  */
 void Write_MFRC522(uchar addr, uchar val)
 {
-	digitalWrite(chipSelectPin, LOW);
+	GPIO_PORTA_DATA_R &= ~chipSelectPin;
 
 	//address format:0XXXXXX0
 	SPI_transfer((addr<<1)&0x7E);
 	SPI_transfer(val);
 
-	digitalWrite(chipSelectPin, HIGH);
+	GPIO_PORTA_DATA_R |= chipSelectPin;
 }
 
 
@@ -417,13 +432,13 @@ uchar Read_MFRC522(uchar addr)
 {
 	uchar val;
 
-	digitalWrite(chipSelectPin, LOW);
+	GPIO_PORTA_DATA_R &= ~chipSelectPin;
 
 	//address format:1XXXXXX0
 	SPI_transfer(((addr<<1)&0x7E) | 0x80);
 	val =SPI_transfer(0x00);
 
-	digitalWrite(chipSelectPin, HIGH);
+	GPIO_PORTA_DATA_R |= chipSelectPin;
 
 	return val;
 }
@@ -506,7 +521,7 @@ void MFRC522_Reset(void)
  */
 void MFRC522_Init(void)
 {
-   digitalWrite(NRSTPD,HIGH);
+   GPIO_PORTA_DATA_R |= NRSTPD;
 
    MFRC522_Reset();
 
