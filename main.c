@@ -31,7 +31,6 @@
 #include "MFRC522.h"									// symbols for RC522 by regnerischerTag
 #include <stdbool.h>									// true AND false
 #include <string.h>										// memcpy
-//void SystemInit(void);
 
 
 // using SSI0 [PA_5 - MOSI, PA_4 - MISO, PA_3 - CS, PA_2 - SCK], PA_6 - CS, PA_7 - NRSTPD
@@ -83,7 +82,7 @@ unsigned char MFRC522_RATS(unsigned char *, unsigned int *);
 void CalulateCRC(unsigned char *, unsigned char, unsigned char *);
 
 
-/* void SystemInit(){
+void Clock_Init(){
 	SYSCTL_RCC2_R |= 0x80000000;										// use RCC2
 	SYSCTL_RCC2_R |= 0x00000800;										// bypass PLL during setup
 	SYSCTL_RCC_R = (SYSCTL_RCC_R& ~0x000007C0)+0x00000540;				// 16 MHz XTAL
@@ -93,14 +92,11 @@ void CalulateCRC(unsigned char *, unsigned char, unsigned char *);
 	SYSCTL_RCC2_R = (SYSCTL_RCC2_R& ~0x1FC00000)+(4<<22);				// 80 MHz
 	while((SYSCTL_RIS_R&0x00000040) == 0){};							// wait for PLL lock
 	SYSCTL_RCC2_R &= ~0x00000800;										// enable PLL by clearing BYPASS
-}
-*/
-void Clock_Init(){
-	volatile unsigned int tictac;
+	// volatile unsigned int tictac;
+	SYSCTL_RCGC2_R |= SYSCTL_RCGC2_GPIOA;								// activate clock for port A
 	SYSCTL_RCGC1_R |= SYSCTL_RCGC1_SSI0;								// activate clock for SSI 0
 	SYSCTL_RCGC1_R |= SYSCTL_SCGC1_UART0;								// activate clock for UART 0
-	SYSCTL_RCGC2_R |= SYSCTL_RCGC2_GPIOA;								// activate clock for port A
-	tictac = SYSCTL_RCGC2_R;											// waste some time for the oscillator to settle
+	//tictac = SYSCTL_RCGC2_R;											// waste some time for the oscillator to settle
 }
 
 void SPI_Init(){
@@ -113,8 +109,9 @@ void SPI_Init(){
 
 	SSI0_CR1_R &= ~SSI_CR1_SSE;											// disable SSI0
 	SSI0_CR1_R &= ~SSI_CR1_MS;											// master mode
-	SSI0_CPSR_R = (SSI0_CPSR_R&~SSI_CPSR_CPSDVSR_M)+4;					// clock prescaler for 1.5MHz SSIClk
+	SSI0_CPSR_R = (SSI0_CPSR_R&~SSI_CPSR_CPSDVSR_M)+2;					// clock prescaler for 1.5MHz SSIClk
 	SSI0_CR0_R &= ~(SSI_CR0_SCR_M | SSI_CR0_SPH | SSI_CR0_SPO);
+	// SSI0_CR0_R |= SSI_CR0_SPH;											// set SPH for a try
 	SSI0_CR0_R = (SSI0_CR0_R&~SSI_CR0_FRF_M)+SSI_CR0_FRF_MOTO;			// Freescale mode
 	SSI0_CR0_R = (SSI0_CR0_R&~SSI_CR0_DSS_M)+SSI_CR0_DSS_8;				// 8-bit data
 	SSI0_CR1_R |= SSI_CR1_SSE;											// enable SSI
@@ -176,7 +173,7 @@ unsigned char SPI_transfer(unsigned char data){
 
 unsigned char sendAfterWaiting(unsigned char code){
 	while((SSI0_SR_R&SSI_SR_TFE) == 0){};								// wait until FIFO empty
-	SSI0_DR_R = code;													// push data out
+	SSI0_DR_R = code;													// push data out -> This has no effect, SSI0_DR keeps 0x00 - what's up with this TI shit ?
 	while((SSI0_SR_R&SSI_SR_RNE) == 0){};								// wait for response
 
 	return (unsigned char)SSI0_DR_R;
@@ -197,6 +194,7 @@ void Serial_print(unsigned char text[]){
 
 void Serial_println(unsigned char text[]){
 	Serial_print(text);
+	UART_OutChar('\r');
 	UART_OutChar('\n');
 }
 
