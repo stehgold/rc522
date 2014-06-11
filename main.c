@@ -102,9 +102,11 @@ void Clock_Init(){
 void SPI_Init(){
 	GPIO_PORTA_PCTL_R = (GPIO_PORTA_PCTL_R&0xFF0F00FF) + 0x00202200;
 	GPIO_PORTA_AMSEL_R = 0;												// disable analog modules
-	GPIO_PORTA_AFSEL_R |= 0x34;											// enable alt function on PA2,4,5
-	GPIO_PORTA_DIR_R |= 0x08;											// disable PA3 (CS) - done using regular GPIO
-	GPIO_PORTA_DEN_R |= 0x3C;											// enable digital IO on PA2,3,4,5
+	GPIO_PORTA_AFSEL_R |= (0x34);										// enable alt function on PA2,4,5
+	GPIO_PORTA_AFSEL_R &= ~(NRSTPD | chipSelectPin);					// disable alt function on PA6 + 7
+	GPIO_PORTA_DIR_R |= (0x08);											// disable PA3 (CS) - done using regular GPIO
+	GPIO_PORTA_DIR_R |= (NRSTPD | chipSelectPin);						// PA6 + 7 GPIO Output
+	GPIO_PORTA_DEN_R |= (0x3C | NRSTPD | chipSelectPin);				// enable digital IO on PA2,3,4,5,6,7
 	GPIO_PORTA_DATA_R |= 0x08;											// pull PA3 high
 
 	SSI0_CR1_R &= ~SSI_CR1_SSE;											// disable SSI0
@@ -203,16 +205,16 @@ void Serial_print_hex(unsigned char hexnum){
 
 	outchar = hexnum / 16;
 	if (outchar > 9){
-		outchar += 0x30;
-	} else{
 		outchar += 0x40;
+	} else{
+		outchar += 0x30;
 	}
 	UART_OutChar(outchar);
 	outchar = hexnum % 16;
 	if (outchar > 9){
-		outchar += 0x30;
-	} else{
 		outchar += 0x40;
+	} else{
+		outchar += 0x30;
 	}
 	UART_OutChar(outchar);
 }
