@@ -23,7 +23,7 @@
  * Stephan Goldenberg
  * 2014-06-01 - started
  * 2014-06-08 - 1st successful build
- *
+ * 2014-06-15 - get back right version info - finally. Still not reading tags
  */
 
 
@@ -70,7 +70,7 @@ void Write_MFRC522(unsigned char, unsigned char);
 unsigned char Read_MFRC522(unsigned char);
 unsigned char MFRC522_Read(unsigned char, unsigned char *);
 unsigned char MFRC522_Auth(unsigned char, unsigned char, unsigned char *, unsigned char *);
-void dumpHex(char* buffer, int len);
+void dumpHex(unsigned char* buffer, int len);
 unsigned char MFRC522_Request(unsigned char, unsigned char *);
 unsigned char MFRC522_Anticoll(unsigned char *);
 unsigned char MFRC522_Anticoll2(unsigned char *);
@@ -111,9 +111,9 @@ void SPI_Init(){
 
 	SSI0_CR1_R &= ~SSI_CR1_SSE;											// disable SSI0
 	SSI0_CR1_R &= ~SSI_CR1_MS;											// master mode
-	SSI0_CPSR_R = (SSI0_CPSR_R&~SSI_CPSR_CPSDVSR_M)+8;					// clock prescaler for 4 MHz SSIClk
+	SSI0_CPSR_R = (SSI0_CPSR_R&~SSI_CPSR_CPSDVSR_M)+80;					// clock prescaler for 1 MHz SSIClk
 	SSI0_CR0_R &= ~(SSI_CR0_SCR_M | SSI_CR0_SPH | SSI_CR0_SPO);
-	// SSI0_CR0_R |= SSI_CR0_SPO;											// set SPO for a try -> tried all 4 combinations, doesn't work SPI sucks !
+	// SSI0_CR0_R |= (SSI_CR0_SPO);										// set SPH for a try -> tried all 4 combinations, doesn't work SPI sucks !
 	SSI0_CR0_R = (SSI0_CR0_R&~SSI_CR0_FRF_M)+SSI_CR0_FRF_MOTO;			// Freescale mode
 	SSI0_CR0_R = (SSI0_CR0_R&~SSI_CR0_DSS_M)+SSI_CR0_DSS_8;				// 8-bit data
 	SSI0_CR1_R |= SSI_CR1_SSE;											// enable SSI
@@ -163,19 +163,19 @@ void delay(unsigned int milis){											// delay milis ms
 } */
 
 unsigned char SPI_transfer(unsigned char data){
-	unsigned short rec_data;
+	unsigned char rec_data;
 
 	GPIO_PORTA_DATA_R &= ~chipSelectPin;								// !CS = 0
-	sendAfterWaiting(data);												// send command
-	rec_data = sendAfterWaiting(0);										// send nothing, receive byte
+	rec_data = sendAfterWaiting(data);									// send command
+	// rec_data = sendAfterWaiting(0);			!!!	d'OH !!!				// send nothing, receive byte
 	GPIO_PORTA_DATA_R |= chipSelectPin;									// !CS = 1
 
-	return (unsigned char)rec_data;
+	return rec_data;
 }
 
 unsigned char sendAfterWaiting(unsigned char code){
 	while((SSI0_SR_R&SSI_SR_TFE) == 0){};								// wait until FIFO empty
-	SSI0_DR_R = code;													// push data out -> This has no effect, SSI0_DR keeps 0x00 - what's up with this TI shit ?
+	SSI0_DR_R = code;													// push data out
 	while((SSI0_SR_R&SSI_SR_RNE) == 0){};								// wait for response
 
 	return (unsigned char)SSI0_DR_R;
@@ -193,6 +193,7 @@ void Serial_print(unsigned char text[]){
 		i++;
 	}
 }
+
 
 void Serial_println(unsigned char text[]){
 	Serial_print(text);
@@ -227,6 +228,7 @@ void Serial_println_hex(unsigned char hexnum){
 
 
 int main(void){
+	unsigned char version;
 	unsigned char serNum[5];											// 4 bytes Serial number of card, the 5th byte is crc
 	unsigned char serNum7[8];											// 7 bytes Serial number of card, the 8th byte is crc
 	//buffer
@@ -241,21 +243,24 @@ int main(void){
 	UART_Init();
 	SPI_Init();
 
-	while(1){
+	// while(1){
+	GPIO_PORTA_DATA_R &= ~NRSTPD;
+	delay(2);
 	// pinMode(chipSelectPin,OUTPUT);         // Set digital pin 10 as OUTPUT to connect it to the RFID /ENABLE pin
 	GPIO_PORTA_DATA_R &= ~chipSelectPin;      								// Activate the RFID reader
 	// pinMode(NRSTPD,OUTPUT);                // Set digital pin 10 , Not Reset and Power-down
 	GPIO_PORTA_DATA_R |= NRSTPD;
+	delay(5);
 
 	MFRC522_Init();
 
 	//display version info
 	//9.3.4.8 VersionReg register : 0x91 / 0x92
-	uchar version = Read_MFRC522(VersionReg);
+	version = Read_MFRC522(VersionReg);
 	Serial_print("MFRC522 Version: 0x");
 	Serial_println_hex(version);
 
-	// while(1){
+	while(1){
 
     uchar status;
     uchar buffer[MAX_LEN];
@@ -286,7 +291,7 @@ int main(void){
                             Serial_println(": ");
 
                         }
-                        dumpHex((char*)buffer, MAX_LEN);
+                        dumpHex((uchar*)buffer, MAX_LEN);
                     }
                     else
                     {
@@ -327,7 +332,7 @@ bool selectCard(bool dumpInfo){
      if (dumpInfo)
      {
          Serial_print("Card detected.\r\n ATQA:");
-         dumpHex((char*)buffer, 2);
+         dumpHex((uchar*)buffer, 2);
          Serial_println(" ");
      }
      //Prevent conflict, return the 4 bytes Serial number of the card
@@ -341,7 +346,7 @@ bool selectCard(bool dumpInfo){
              if (dumpInfo)
              {
                  Serial_print(" UID: ");
-                 dumpHex((char*)serNum, 4);
+                 dumpHex((uchar*)serNum, 4);
                  Serial_println("");
              }
              if ((sak & 0x20) == 0x20)
@@ -356,7 +361,7 @@ bool selectCard(bool dumpInfo){
                  if (status == MI_OK && dumpInfo)
                  {
                       Serial_println(" ATS: ");
-                      dumpHex((char*)ats, ats[0]);
+                      dumpHex((uchar*)ats, ats[0]);
                       Serial_println("");
                  }
              }
@@ -380,7 +385,7 @@ bool selectCard(bool dumpInfo){
                  if (dumpInfo)
                  {
                     Serial_print(" UID: ");
-                    dumpHex((char*)serNum7, 7);
+                    dumpHex((uchar*)serNum7, 7);
                     Serial_println("");
                     Serial_print(" SAK: ");
                     Serial_print_hex(sak);
@@ -1060,10 +1065,10 @@ void MFRC522_Halt(void)
     status = MFRC522_ToCard(PCD_TRANSCEIVE, buff, 4, buff, &unLen);
 }
 
-void dumpHex(char* buffer, int len){
+void dumpHex(uchar* buffer, int len){
 	unsigned char i;
   for(i=0; i < len; i++) {
-     char text[4];
+     uchar text[4];
      if (i % 16 == 0) {
         Serial_print(" ");
      }
