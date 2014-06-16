@@ -38,21 +38,19 @@
 
 #define chipSelectPin 0x40
 #define NRSTPD 0x80
-#define HIGH 0x01
-#define LOW 0x00
 
 #define	uchar	unsigned char
 #define	uint	unsigned int
 //data array maxium length
 #define MAX_LEN 16
 
-unsigned char serNum[];
-unsigned char serNum7[];
+//unsigned char status;
+unsigned char serNum[5];
+unsigned char serNum7[8];
 
 void Clock_Init(void);
 void SPI_Init(void);
 void UART_Init(void);
-// void digitalWrite(int, int);
 unsigned char SPI_transfer(unsigned char);
 unsigned char sendAfterWaiting(unsigned char);
 void Serial_print(unsigned char[]);
@@ -82,6 +80,7 @@ unsigned char MFRC522_RATS(unsigned char *, unsigned int *);
 void CalulateCRC(unsigned char *, unsigned char, unsigned char *);
 
 
+
 void Clock_Init(){
 	SYSCTL_RCC2_R |= 0x80000000;										// use RCC2
 	SYSCTL_RCC2_R |= 0x00000800;										// bypass PLL during setup
@@ -92,11 +91,9 @@ void Clock_Init(){
 	SYSCTL_RCC2_R = (SYSCTL_RCC2_R& ~0x1FC00000)+(4<<22);				// 80 MHz
 	while((SYSCTL_RIS_R&0x00000040) == 0){};							// wait for PLL lock
 	SYSCTL_RCC2_R &= ~0x00000800;										// enable PLL by clearing BYPASS
-	// volatile unsigned int tictac;
 	SYSCTL_RCGC2_R |= SYSCTL_RCGC2_GPIOA;								// activate clock for port A
 	SYSCTL_RCGC1_R |= SYSCTL_RCGC1_SSI0;								// activate clock for SSI 0
 	SYSCTL_RCGC1_R |= SYSCTL_SCGC1_UART0;								// activate clock for UART 0
-	//tictac = SYSCTL_RCGC2_R;											// waste some time for the oscillator to settle
 }
 
 void SPI_Init(){
@@ -113,15 +110,14 @@ void SPI_Init(){
 	SSI0_CR1_R &= ~SSI_CR1_MS;											// master mode
 	SSI0_CPSR_R = (SSI0_CPSR_R&~SSI_CPSR_CPSDVSR_M)+80;					// clock prescaler for 1 MHz SSIClk
 	SSI0_CR0_R &= ~(SSI_CR0_SCR_M | SSI_CR0_SPH | SSI_CR0_SPO);
-	// SSI0_CR0_R |= (SSI_CR0_SPO);										// set SPH for a try -> tried all 4 combinations, doesn't work SPI sucks !
 	SSI0_CR0_R = (SSI0_CR0_R&~SSI_CR0_FRF_M)+SSI_CR0_FRF_MOTO;			// Freescale mode
 	SSI0_CR0_R = (SSI0_CR0_R&~SSI_CR0_DSS_M)+SSI_CR0_DSS_8;				// 8-bit data
 	SSI0_CR1_R |= SSI_CR1_SSE;											// enable SSI
 }
 
 void UART_Init(){
-	// SYSCTL_RCGC1_R |= 0x0001;										// activate UART0
-	// SYSCTL_RCGC2_R |= 0x0001;										// activate port A
+	// SYSCTL_RCGC1_R |= 0x0001;										// activate UART0    - done in
+	// SYSCTL_RCGC2_R |= 0x0001;										// activate port A   - Clock_Init() now
 	UART0_CTL_R &= ~0001;												// disable UART0
 	UART0_IBRD_R = 43;													// IBRD = (80M / (16 * 115k2)) = int(43.40278)
 	UART0_FBRD_R = 26;													// FBRD = round(0.40278 * 64) = 26
@@ -154,20 +150,11 @@ void delay(unsigned int milis){											// delay milis ms
 }
 
 
-/*void digitalWrite(int pin, int state){
-		if(state == HIGH){
-		GPIO_PORTA_DATA_R |= pin;
-	} else{
-		GPIO_PORTA_DATA_R &= ~pin;
-	}
-} */
-
 unsigned char SPI_transfer(unsigned char data){
 	unsigned char rec_data;
 
 	GPIO_PORTA_DATA_R &= ~chipSelectPin;								// !CS = 0
 	rec_data = sendAfterWaiting(data);									// send command
-	// rec_data = sendAfterWaiting(0);			!!!	d'OH !!!				// send nothing, receive byte
 	GPIO_PORTA_DATA_R |= chipSelectPin;									// !CS = 1
 
 	return rec_data;
@@ -182,12 +169,14 @@ unsigned char sendAfterWaiting(unsigned char code){
 }
 
 void UART_OutChar(unsigned char data){
+
 	while((UART0_FR_R&0x0020) != 0);									// wait until TXFF is 0
 	UART0_DR_R = data;
 }
 
 void Serial_print(unsigned char text[]){
 	unsigned int i = 0;
+
 	while(text[i] != 0){
 		UART_OutChar(text[i]);
 		i++;
@@ -196,6 +185,7 @@ void Serial_print(unsigned char text[]){
 
 
 void Serial_println(unsigned char text[]){
+
 	Serial_print(text);
 	UART_OutChar('\r');
 	UART_OutChar('\n');
@@ -221,44 +211,43 @@ void Serial_print_hex(unsigned char hexnum){
 }
 
 void Serial_println_hex(unsigned char hexnum){
+
 	Serial_print_hex(hexnum);
 	UART_OutChar('\r');
 	UART_OutChar('\n');
 }
 
 
+
 int main(void){
-	unsigned char version;
-	unsigned char serNum[5];											// 4 bytes Serial number of card, the 5th byte is crc
-	unsigned char serNum7[8];											// 7 bytes Serial number of card, the 8th byte is crc
+
+	unsigned char version = 0;
+	//unsigned char serNum[5];											// 4 bytes Serial number of card, the 5th byte is crc
+	//unsigned char serNum7[8];											// 7 bytes Serial number of card, the 8th byte is crc
 	//buffer
 	//uchar str[MAX_LEN];
+	//status = 0x00;
 
-	uchar defaultKeyA[16] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-	uchar madKeyA[16] =     { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5 };
-	uchar NDEFKeyA[16] =    { 0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7 };
+	uchar defaultKeyA[MAX_LEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+	uchar madKeyA[MAX_LEN] =     { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5 };
+	uchar NDEFKeyA[MAX_LEN] =    { 0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7 };
 
 	Clock_Init();
 	SysTick_Init();
 	UART_Init();
 	SPI_Init();
 
-	// while(1){
-	GPIO_PORTA_DATA_R &= ~NRSTPD;
-	delay(2);
-	// pinMode(chipSelectPin,OUTPUT);         // Set digital pin 10 as OUTPUT to connect it to the RFID /ENABLE pin
-	GPIO_PORTA_DATA_R &= ~chipSelectPin;      								// Activate the RFID reader
-	// pinMode(NRSTPD,OUTPUT);                // Set digital pin 10 , Not Reset and Power-down
-	GPIO_PORTA_DATA_R |= NRSTPD;
-	delay(5);
+	GPIO_PORTA_DATA_R |= NRSTPD;										// wake up reader
+	delay(2);															// give it some time
+	GPIO_PORTA_DATA_R &= ~chipSelectPin;      							// Activate the RFID reader
 
 	MFRC522_Init();
 
 	//display version info
-	//9.3.4.8 VersionReg register : 0x91 / 0x92
+	//9.3.4.8 VersionReg register : 0x91 / 0x92 -> 91: Version 1, 92: Version 2
 	version = Read_MFRC522(VersionReg);
-	Serial_print("MFRC522 Version: 0x");
-	Serial_println_hex(version);
+	Serial_print("MFRC522 Software Version: ");
+	Serial_println_hex(version&0x0F);
 
 	while(1){
 
@@ -338,7 +327,7 @@ bool selectCard(bool dumpInfo){
      //Prevent conflict, return the 4 bytes Serial number of the card
      status = MFRC522_Anticoll(buffer);
      if (status == MI_OK){
-			 unsigned char sak = 0;
+		 unsigned char sak = 0;
          memcpy(serNum, buffer, 5);
          status = MFRC522_SelectTag(serNum, &sak);
          if (status == MI_OK && ((sak & 0x04) == 0x00))
@@ -574,13 +563,15 @@ uchar MFRC522_Request(uchar reqMode, uchar *TagType)
 	if ((status != MI_OK) || (backBits != 0x10))
 	{
 	     status = MI_ERR;
-/*
+//TODO
+	     //comment out again
              Serial_print("status: ");
              Serial_print_hex(status);
              Serial_print(" backBits: ");
              Serial_print_hex(backBits);
              Serial_println("");
-*/
+
+
 	}
 	return status;
 }
